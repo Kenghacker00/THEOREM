@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from 'react';
 import { Car, Bike, Truck } from 'lucide-react';
 import { Label } from './ui/label';
 import { Slider } from './ui/slider';
@@ -69,6 +70,65 @@ export function RaceControls({
           break;
       }
     }
+  };
+
+  // Mass input validation
+  const MIN_MASS = 50;
+  const MAX_MASS = 10000;
+  const [massInput, setMassInput] = useState<string>(String(mass));
+  const [massError, setMassError] = useState<string | null>(null);
+
+  // Keep local input synced when parent mass changes (e.g., slider or external)
+  useEffect(() => {
+    setMassInput(String(mass));
+    setMassError(null);
+  }, [mass]);
+
+  const handleMassChange = (raw: string) => {
+    if (isRunning) return;
+    setMassInput(raw);
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      setMassError('Introduce un valor');
+      return;
+    }
+    const n = Number(trimmed);
+    if (Number.isNaN(n)) {
+      setMassError('Valor no válido');
+      return;
+    }
+    if (n < MIN_MASS) {
+      setMassError(`Mínimo ${MIN_MASS} kg`);
+      return;
+    }
+    if (n > MAX_MASS) {
+      setMassError(`Máximo ${MAX_MASS} kg`);
+      return;
+    }
+    setMassError(null);
+  };
+
+  const commitMass = () => {
+    if (isRunning) return;
+    const trimmed = massInput.trim();
+    if (trimmed === '') {
+      setMass(MIN_MASS);
+      setMassInput(String(MIN_MASS));
+      setMassError(null);
+      return;
+    }
+    let n = Number(trimmed);
+    if (Number.isNaN(n)) {
+      setMass(MIN_MASS);
+      setMassInput(String(MIN_MASS));
+      setMassError(null);
+      return;
+    }
+    // clamp and round
+    n = Math.round(Math.max(MIN_MASS, Math.min(MAX_MASS, n)));
+    setMass(n);
+    setMassInput(String(n));
+    setMassError(null);
   };
 
   return (
@@ -214,19 +274,34 @@ export function RaceControls({
 
         {/* Mass */}
         <div className="space-y-2">
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Label className="text-gray-300">Masa (m)</Label>
-            <span className="text-white">{mass} kg</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={50}
+                  max={10000}
+                  step={1}
+                  value={massInput}
+                  onChange={e => handleMassChange(e.target.value)}
+                  onBlur={commitMass}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitMass(); }}
+                  disabled={isRunning}
+                  className="w-28 bg-gray-700 text-white px-2 py-1 rounded-lg text-sm"
+                />
+                <span className="text-white">kg</span>
+              </div>
           </div>
           <Slider
             value={[mass]}
-            onValueChange={(value: number[]) => setMass(value[0])}
-            min={100}
-            max={5000}
-            step={50}
+            onValueChange={(value: number[]) => { setMass(value[0]); setMassInput(String(value[0])); }}
+            min={50}
+            max={10000}
+            step={10}
             disabled={isRunning}
             className="cursor-pointer"
           />
+          {massError && <p className="text-xs text-rose-400 mt-1">{massError}</p>}
         </div>
 
         {/* Applied Force */}
