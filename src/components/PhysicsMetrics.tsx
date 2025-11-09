@@ -133,12 +133,12 @@ F_prom = ${fuerzaPromedio.toFixed(2)} N`
       </div>
 
       <div className="p-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {metrics.map((metric) => (
             <div key={metric.id} className="col-span-1">
               <div className={`bg-gradient-to-br ${cardColor} rounded-lg border p-3 hover:shadow-lg transition-all`}>
-                <div className="text-xs text-gray-400 mb-1">{metric.label}</div>
-                <div className="text-2xl text-white mb-1">
+                <div className="text-xs sm:text-xs text-gray-400 mb-1">{metric.label}</div>
+                <div className="text-xl sm:text-2xl text-white mb-1">
                   {metric.value} <span className="text-sm text-gray-400">{metric.unit}</span>
                 </div>
                 <div className="text-xs text-gray-500 mb-2">{metric.formula}</div>
@@ -171,7 +171,7 @@ F_prom = ${fuerzaPromedio.toFixed(2)} N`
         </div>
 
         {/* Energy and Work Display */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="bg-gradient-to-br from-green-900/40 to-green-950/40 border border-green-700/30 rounded-lg p-3">
             <div className="text-xs text-green-400 mb-1">Energía Cinética (KE)</div>
             <div className="text-xl text-white">
@@ -197,7 +197,7 @@ F_prom = ${fuerzaPromedio.toFixed(2)} N`
         {currentData.time > 0.5 && (
           <div className="mt-3 bg-gradient-to-br from-yellow-900/40 to-yellow-950/40 border border-yellow-700/30 rounded-lg p-3">
             <div className="text-xs text-yellow-400 mb-2">Verificación del Teorema W = ΔKE</div>
-            <div className="grid grid-cols-2 gap-2 text-xs text-yellow-100">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-yellow-100">
               <div>W = {currentData.work.toFixed(2)} J</div>
               <div>ΔKE = {currentData.kineticEnergy.toFixed(2)} J</div>
             </div>

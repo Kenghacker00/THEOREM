@@ -37,8 +37,8 @@ export default function App() {
   const [vehicle1InitialPosition, setVehicle1InitialPosition] = useState(0);
 
   // Vehicle 2 (Opponent)
-  const [vehicle2Type, setVehicle2Type] = useState<VehicleType>('motorcycle');
-  const [vehicle2Mass, setVehicle2Mass] = useState(250);
+  const [vehicle2Type, setVehicle2Type] = useState<VehicleType>('car');
+  const [vehicle2Mass, setVehicle2Mass] = useState(1000);
   const [vehicle2Force, setVehicle2Force] = useState<number | null>(null);
   const [vehicle2Friction, setVehicle2Friction] = useState(80);
   const [vehicle2ForceType, setVehicle2ForceType] = useState<ForceType>('constant');
@@ -135,45 +135,79 @@ export default function App() {
     const currentTime = (Date.now() - startTimeRef.current) / 1000;
     const dt = 0.016;
 
-    // Vehicle 1 physics
-  const v1AppliedForce = calculateForce(vehicle1Force ?? 0, vehicle1ForceType, currentTime);
-    const v1NetForce = v1AppliedForce - vehicle1Friction;
-    const v1Acceleration = v1NetForce / vehicle1Mass;
-    
-    v1VelocityRef.current += v1Acceleration * dt;
-    if (v1VelocityRef.current < 0) v1VelocityRef.current = 0;
+    // Vehicle 1 physics - RK2 (Heun) for velocity, trapezoidal for position, average force for work
+    const v1F1 = calculateForce(vehicle1Force ?? 0, vehicle1ForceType, currentTime);
+    const v1F2 = calculateForce(vehicle1Force ?? 0, vehicle1ForceType, currentTime + dt);
+    const v1Fnet1 = v1F1 - vehicle1Friction;
+    const v1Fnet2 = v1F2 - vehicle1Friction;
+    const v1a1 = v1Fnet1 / vehicle1Mass;
+    const v1a2 = v1Fnet2 / vehicle1Mass;
+
+    const v1OldV = v1VelocityRef.current;
+    // Heun's method (RK2) for velocity: v_new = v_old + 0.5*(a1 + a2)*dt
+    let v1NewV = Math.max(0, v1OldV + 0.5 * (v1a1 + v1a2) * dt);
+    // displacement using trapezoidal rule dx = (v_old + v_new)/2 * dt
+    let v1Dx = 0.5 * (v1OldV + v1NewV) * dt;
+    // average net force over the step for work estimation
+    const v1FnetAvg = 0.5 * (v1Fnet1 + v1Fnet2);
+    // clamp if overshooting finish line
+    if (raceDistance !== null) {
+      const remaining = raceDistance - v1PositionRef.current;
+      if (v1Dx >= remaining) {
+        v1Dx = Math.max(0, remaining);
+        // approximate average acceleration and recompute v_new from v^2 = v0^2 + 2*a_avg*dx
+        const aAvg = 0.5 * (v1a1 + v1a2);
+        const v1Sq = Math.max(0, v1OldV * v1OldV + 2 * aAvg * v1Dx);
+        v1NewV = Math.sqrt(v1Sq);
+      }
+    }
+    v1PositionRef.current += v1Dx;
+    v1VelocityRef.current = v1NewV;
     if (v1VelocityRef.current > v1MaxVelocityRef.current) {
       v1MaxVelocityRef.current = v1VelocityRef.current;
     }
-    
-    v1PositionRef.current += v1VelocityRef.current * dt;
     const v1KineticEnergy = 0.5 * vehicle1Mass * Math.pow(v1VelocityRef.current, 2);
-    v1WorkRef.current = v1NetForce * v1PositionRef.current;
+    // incremental work approximated as average net force * displacement
+    v1WorkRef.current += v1FnetAvg * v1Dx;
 
-    // Vehicle 2 physics
-  const v2AppliedForce = calculateForce(vehicle2Force ?? 0, vehicle2ForceType, currentTime);
-    const v2NetForce = v2AppliedForce - vehicle2Friction;
-    const v2Acceleration = v2NetForce / vehicle2Mass;
-    
-    v2VelocityRef.current += v2Acceleration * dt;
-    if (v2VelocityRef.current < 0) v2VelocityRef.current = 0;
+    // Vehicle 2 physics - RK2 / Heun
+    const v2F1 = calculateForce(vehicle2Force ?? 0, vehicle2ForceType, currentTime);
+    const v2F2 = calculateForce(vehicle2Force ?? 0, vehicle2ForceType, currentTime + dt);
+    const v2Fnet1 = v2F1 - vehicle2Friction;
+    const v2Fnet2 = v2F2 - vehicle2Friction;
+    const v2a1 = v2Fnet1 / vehicle2Mass;
+    const v2a2 = v2Fnet2 / vehicle2Mass;
+
+    const v2OldV = v2VelocityRef.current;
+    let v2NewV = Math.max(0, v2OldV + 0.5 * (v2a1 + v2a2) * dt);
+    let v2Dx = 0.5 * (v2OldV + v2NewV) * dt;
+    const v2FnetAvg = 0.5 * (v2Fnet1 + v2Fnet2);
+    if (raceDistance !== null) {
+      const remaining2 = raceDistance - v2PositionRef.current;
+      if (v2Dx >= remaining2) {
+        v2Dx = Math.max(0, remaining2);
+        const aAvg2 = 0.5 * (v2a1 + v2a2);
+        const v2Sq = Math.max(0, v2OldV * v2OldV + 2 * aAvg2 * v2Dx);
+        v2NewV = Math.sqrt(v2Sq);
+      }
+    }
+    v2PositionRef.current += v2Dx;
+    v2VelocityRef.current = v2NewV;
     if (v2VelocityRef.current > v2MaxVelocityRef.current) {
       v2MaxVelocityRef.current = v2VelocityRef.current;
     }
-    
-    v2PositionRef.current += v2VelocityRef.current * dt;
     const v2KineticEnergy = 0.5 * vehicle2Mass * Math.pow(v2VelocityRef.current, 2);
-    v2WorkRef.current = v2NetForce * v2PositionRef.current;
+    v2WorkRef.current += v2FnetAvg * v2Dx;
 
     // Update vehicle 1 data
     const newV1Data: VehicleData = {
       time: currentTime,
       position: v1PositionRef.current,
       velocity: v1VelocityRef.current,
-      acceleration: v1Acceleration,
+      acceleration: 0.5 * ((v1Fnet1 / vehicle1Mass) + (v1Fnet2 / vehicle1Mass)),
       kineticEnergy: v1KineticEnergy,
       work: v1WorkRef.current,
-      force: v1NetForce,
+      force: 0.5 * (v1Fnet1 + v1Fnet2),
       maxVelocity: v1MaxVelocityRef.current
     };
     setVehicle1Current(newV1Data);
@@ -184,10 +218,10 @@ export default function App() {
       time: currentTime,
       position: v2PositionRef.current,
       velocity: v2VelocityRef.current,
-      acceleration: v2Acceleration,
+      acceleration: 0.5 * ((v2Fnet1 / vehicle2Mass) + (v2Fnet2 / vehicle2Mass)),
       kineticEnergy: v2KineticEnergy,
       work: v2WorkRef.current,
-      force: v2NetForce,
+      force: 0.5 * (v2Fnet1 + v2Fnet2),
       maxVelocity: v2MaxVelocityRef.current
     };
     setVehicle2Current(newV2Data);
@@ -277,9 +311,9 @@ export default function App() {
         {/* Simulation Controls - Horizontal bar at top */}
         <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg border border-gray-700 shadow-xl">
           <div className="p-4">
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
               {/* Left: Selectors (distance + time) */}
-              <div className="flex-1 min-w-[280px] max-w-[760px]">
+              <div className="w-full md:flex-1 md:min-w-[280px] md:max-w-[760px]">
                 <div className="grid grid-cols-2 gap-4 items-center">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 h-5">
@@ -303,7 +337,7 @@ export default function App() {
                           }
                         }}
                         disabled={isRunning}
-                        className="bg-gray-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 text-sm"
+                        className="w-full md:w-auto bg-gray-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 text-sm"
                       >
                         <option value="">— Seleccionar —</option>
                         <option value={200}>200 metros</option>
@@ -322,7 +356,7 @@ export default function App() {
                           value={raceDistance ?? ''}
                           onChange={(e) => setRaceDistance(e.target.value === '' ? null : Number(e.target.value))}
                           disabled={isRunning}
-                          className="w-28 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm"
+                          className="w-full md:w-28 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm"
                           placeholder="metros"
                         />
                       )}
@@ -354,7 +388,7 @@ export default function App() {
                           }
                         }}
                         disabled={isRunning}
-                        className="bg-gray-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 text-sm"
+                        className="w-full md:w-auto bg-gray-700 text-white px-3 py-2 rounded-lg disabled:opacity-50 text-sm"
                       >
                         <option value="">— Seleccionar —</option>
                         <option value={10}>10 segundos</option>
@@ -373,7 +407,7 @@ export default function App() {
                           value={raceTime ?? ''}
                           onChange={(e) => setRaceTime(e.target.value === '' ? null : Number(e.target.value))}
                           disabled={isRunning}
-                          className="w-28 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm"
+                          className="w-full md:w-28 bg-gray-700 text-white px-3 py-2 rounded-lg text-sm"
                           placeholder="s"
                         />
                       )}
@@ -383,7 +417,7 @@ export default function App() {
               </div>
 
               {/* Center: Control Buttons */}
-              <div className="flex items-center gap-4 justify-center min-w-[260px]">
+              <div className="w-full md:w-auto flex flex-col md:flex-row items-center gap-3 justify-center md:min-w-[260px]">
                 <button
                   onClick={() => setIsRunning(!isRunning)}
                   disabled={
@@ -394,7 +428,7 @@ export default function App() {
                     vehicle2Force === null
                   }
                   aria-pressed={isRunning}
-                  className={`min-w-[160px] py-3 px-4 rounded-lg transition-all transform hover:scale-105 flex items-center justify-center gap-3 ${
+                  className={`w-full md:w-auto md:min-w-[160px] py-3 px-4 rounded-lg transition-all transform hover:scale-105 flex items-center justify-center gap-3 ${
                     isRunning
                       ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600'
                       : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600'
@@ -414,12 +448,12 @@ export default function App() {
                   vehicle1Force === null ||
                   vehicle2Force === null
                 ) && (
-                  <div className="text-xs text-yellow-300 ml-2">Seleccione distancia, tiempo y fuerzas para iniciar</div>
+                  <div className="text-xs text-yellow-300 ml-0 md:ml-2 mt-2 md:mt-0">Seleccione distancia, tiempo y fuerzas para iniciar</div>
                 )}
 
                 <button
                   onClick={handleReset}
-                  className="min-w-[140px] px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-lg transition-all transform hover:scale-105 flex items-center justify-center gap-3 shadow-lg ring-1 ring-white/10"
+                  className="w-full md:w-auto md:min-w-[140px] px-4 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white rounded-lg transition-all transform hover:scale-105 flex items-center justify-center gap-3 shadow-lg ring-1 ring-white/10"
                 >
                   <span className="inline-flex items-center justify-center p-2 rounded-md bg-white/10">
                     <RefreshCw size={18} />
@@ -429,7 +463,7 @@ export default function App() {
               </div>
 
               {/* Right: Scenario Selector */}
-              <div className="ml-auto">
+              <div className="w-full md:w-auto flex md:justify-end">
                 <div className="text-white text-sm mb-1 text-right">Escenario:</div>
                 <div className="grid grid-cols-4 gap-2">
                   {(['highway', 'city', 'desert', 'mountain'] as ScenarioType[]).map((s) => (
@@ -472,8 +506,8 @@ export default function App() {
           vehicle2Image={vehicle2ImageUrl}
         />
 
-        {/* Vehicle Controls - Side by Side */}
-        <div className="grid grid-cols-2 gap-4">
+    {/* Vehicle Controls - Side by Side */}
+    <div className="grid grid-cols-2 gap-4">
           <RaceControls
             vehicleNumber={1}
             vehicleType={vehicle1Type}
@@ -519,8 +553,8 @@ export default function App() {
           />
         </div>
 
-        {/* Physics Metrics - Side by Side with more spacing */}
-        <div className="grid grid-cols-2 gap-4">
+    {/* Physics Metrics - Side by Side with more spacing */}
+    <div className="grid grid-cols-2 gap-4">
           <PhysicsMetrics
             vehicleNumber={1}
             currentData={vehicle1Current}

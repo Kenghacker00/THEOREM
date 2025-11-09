@@ -107,45 +107,21 @@ export function RaceControls({
             className="w-full px-3 py-2 rounded-lg bg-gray-700 text-white disabled:opacity-50"
           />
         </div>
-        {/* Vehicle Type */}
+        {/* Vehicle Type (single option) */}
         <div className="space-y-2">
           <Label className="text-gray-300">Tipo de Vehículo</Label>
-          <div className="grid grid-cols-1 gap-2">
+          <div>
             <button
               onClick={() => handleVehicleChange('car')}
               disabled={isRunning}
-              className={`p-3 rounded-lg transition-all ${
-                vehicleType === 'car' 
-                  ? buttonColor + ' text-white' 
+              className={`w-full p-3 rounded-lg transition-all ${
+                vehicleType === 'car'
+                  ? buttonColor + ' text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               } disabled:opacity-50 flex items-center justify-center gap-2`}
             >
               <Car size={18} />
-              Carro Deportivo
-            </button>
-            <button
-              onClick={() => handleVehicleChange('motorcycle')}
-              disabled={isRunning}
-              className={`p-3 rounded-lg transition-all ${
-                vehicleType === 'motorcycle' 
-                  ? buttonColor + ' text-white' 
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              } disabled:opacity-50 flex items-center justify-center gap-2`}
-            >
-              <Bike size={18} />
-              Moto Deportiva
-            </button>
-            <button
-              onClick={() => handleVehicleChange('truck')}
-              disabled={isRunning}
-              className={`p-3 rounded-lg transition-all ${
-                vehicleType === 'truck' 
-                  ? buttonColor + ' text-white' 
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              } disabled:opacity-50 flex items-center justify-center gap-2`}
-            >
-              <Truck size={18} />
-              Pickup Deportiva
+              Vehículo
             </button>
           </div>
         </div>

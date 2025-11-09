@@ -140,6 +140,9 @@ export function RaceScene({
 }: RaceSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [visibleWidth, setVisibleWidth] = useState<number>(1600);
+  const parallaxRef = useRef<HTMLDivElement | null>(null);
+  const movingRef = useRef<HTMLDivElement | null>(null);
+  
 
   useEffect(() => {
     const update = () => {
@@ -198,6 +201,9 @@ export function RaceScene({
   const maxCameraOffsetPixels = Math.max(0, trackTotalWidthPx - visibleWidth);
   // Cámara final en píxeles, nunca negativa y nunca por encima del máximo
   const cameraX = Math.max(0, Math.min(cameraOffsetPixels, maxCameraOffsetPixels));
+
+  // activate smoothing RAF loop to interpolate towards cameraX
+  useSmoothCamera(cameraX, movingRef, parallaxRef);
 
   // Repeat scenario background horizontally so it never ends
   const getScenario = () => {
@@ -305,23 +311,18 @@ export function RaceScene({
         </div>
 
         {/* Scrolling (parallax) background */}
-        <motion.div
-          className="absolute inset-0"
-          animate={{ x: -cameraX * 0.3 }}
-          transition={{ type: "spring", stiffness: 100, damping: 20 }}
-        >
+  <div ref={parallaxRef} className="absolute inset-0 will-change-transform" style={{ transform: `translate3d(${-cameraX * 0.3}px,0,0)` }}>
           {getScenario()}
-        </motion.div>
+        </div>
         
-        {/* Grass */}
-        <div className="absolute bottom-[310px] left-0 right-[200%] h-6 bg-gradient-to-b from-green-600 to-green-700" />
+  {/* Grass */}
+  <div className="absolute bottom-[310px] left-0 right-[200%] h-6 bg-gradient-to-b from-green-600 to-green-700" />
 
         {/* Track Container with Camera Movement */}
-        <motion.div
-          className="absolute bottom-0 left-0 h-[310px]"
-          style={{ width: `${Math.max(1600, leftPaddingPx + raceDistance * 1.6 + rightPaddingPx + 200)}px` }}
-          animate={{ x: -cameraX }}
-          transition={{ type: "spring", stiffness: 100, damping: 20 }}
+        <div
+          ref={movingRef}
+          className="absolute bottom-0 left-0 h-[310px] will-change-transform"
+          style={{ width: `${Math.max(1600, leftPaddingPx + raceDistance * 1.6 + rightPaddingPx + 200)}px`, transform: `translate3d(${-cameraX}px,0,0)` }}
         >
           {/* Repeat road lanes horizontally */}
           {Array.from({ length: Math.ceil((raceDistance * 1.6 + 1600) / 1600) }).map((_, idx) => (
@@ -466,7 +467,7 @@ export function RaceScene({
               </div>
             </motion.div>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Progress bar at bottom */}
@@ -491,4 +492,28 @@ export function RaceScene({
       </div>
     </div>
   );
+}
+
+// Smooth camera interpolation effect: keep using the computed `cameraX` as the target
+// but update the DOM transform at RAF pace with interpolation to reduce jitter.
+// This avoids animating with a spring every render which can jitter at very large offsets.
+// We set up the RAF loop when the component mounts and clean up on unmount.
+// The effect depends on `cameraX` so whenever the computed target changes, the loop will
+// interpolate towards the new target smoothly.
+// Note: we intentionally keep the loop internal and mutate DOM transforms directly to
+// avoid forcing React re-renders at 60fps.
+function useSmoothCamera(cameraX: number, movingRef: React.RefObject<HTMLDivElement | null>, parallaxRef: React.RefObject<HTMLDivElement | null>) {
+  const cameraRef = useRef<number>(cameraX);
+  useEffect(() => {
+    let raf = 0;
+    const step = () => {
+      // interpolate (lerp) towards target
+      cameraRef.current += (cameraX - cameraRef.current) * 0.12;
+      if (movingRef.current) movingRef.current.style.transform = `translate3d(${-cameraRef.current}px,0,0)`;
+      if (parallaxRef.current) parallaxRef.current.style.transform = `translate3d(${-cameraRef.current * 0.3}px,0,0)`;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [cameraX, movingRef, parallaxRef]);
 }

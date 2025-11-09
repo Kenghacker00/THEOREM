@@ -37,17 +37,17 @@ export function ChartsPanel({ vehicle1Data, vehicle2Data }: ChartsPanelProps) {
       <h3 className="text-white text-xl mb-6">📈 Gráficas Comparativas en Tiempo Real</h3>
       
       <Tabs defaultValue="energy" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-gray-950/50 mb-6">
-          <TabsTrigger value="energy" className="text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 py-3">
+        <TabsList className="flex gap-2 overflow-x-auto no-scrollbar bg-gray-950/50 mb-6 p-1 rounded">
+          <TabsTrigger value="energy" className="flex-shrink-0 text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 px-3 py-2 text-sm sm:text-base rounded-md">
             Energía/Trabajo
           </TabsTrigger>
-          <TabsTrigger value="velocity" className="text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 py-3">
+          <TabsTrigger value="velocity" className="flex-shrink-0 text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 px-3 py-2 text-sm sm:text-base rounded-md">
             Velocidad
           </TabsTrigger>
-          <TabsTrigger value="position" className="text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 py-3">
+          <TabsTrigger value="position" className="flex-shrink-0 text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 px-3 py-2 text-sm sm:text-base rounded-md">
             Posición
           </TabsTrigger>
-          <TabsTrigger value="acceleration" className="text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 py-3">
+          <TabsTrigger value="acceleration" className="flex-shrink-0 text-white data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-purple-600 px-3 py-2 text-sm sm:text-base rounded-md">
             Aceleración
           </TabsTrigger>
         </TabsList>
