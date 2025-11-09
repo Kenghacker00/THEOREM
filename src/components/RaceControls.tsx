@@ -1,0 +1,316 @@
+import { Car, Bike, Truck } from 'lucide-react';
+import { Label } from './ui/label';
+import { Slider } from './ui/slider';
+import type { VehicleType, ForceType } from '../App';
+
+interface RaceControlsProps {
+  vehicleNumber: number;
+  vehicleType: VehicleType;
+  setVehicleType: (type: VehicleType) => void;
+  mass: number;
+  setMass: (mass: number) => void;
+  appliedForce: number | null;
+  setAppliedForce: (force: number | null) => void;
+  friction: number;
+  setFriction: (friction: number) => void;
+  forceType: ForceType;
+  setForceType: (type: ForceType) => void;
+  isRunning: boolean;
+  color: 'blue' | 'red';
+  initialVelocity: number;
+  setInitialVelocity: (v: number) => void;
+  initialPosition: number;
+  setInitialPosition: (p: number) => void;
+  imageUrl?: string | null;
+  setImageUrl?: (url: string | null) => void;
+}
+
+export function RaceControls({
+  vehicleNumber,
+  vehicleType,
+  setVehicleType,
+  mass,
+  setMass,
+  appliedForce,
+  setAppliedForce,
+  friction,
+  setFriction,
+  forceType,
+  setForceType,
+  isRunning,
+  color,
+  initialVelocity,
+  setInitialVelocity,
+  initialPosition,
+  setInitialPosition
+  , imageUrl, setImageUrl
+}: RaceControlsProps) {
+  
+  const headerColor = color === 'blue' 
+    ? 'from-blue-600 to-blue-800' 
+    : 'from-red-600 to-red-800';
+
+  const buttonColor = color === 'blue'
+    ? 'bg-blue-600 hover:bg-blue-700'
+    : 'bg-red-600 hover:bg-red-700';
+
+  const handleVehicleChange = (type: VehicleType) => {
+    if (!isRunning) {
+      setVehicleType(type);
+      switch (type) {
+        case 'car':
+          setMass(1000);
+          break;
+        case 'motorcycle':
+          setMass(250);
+          break;
+        case 'truck':
+          setMass(3000);
+          break;
+      }
+    }
+  };
+
+  return (
+    <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border-2 border-gray-700 shadow-2xl overflow-hidden">
+      <div className={`bg-gradient-to-r ${headerColor} p-4`}>
+        <h3 className="text-white">
+          🏎️ Vehículo {vehicleNumber}
+        </h3>
+      </div>
+      
+      <div className="p-4 space-y-4">
+        {/* Initial Velocity & Position */}
+        <div className="space-y-2">
+          <Label className="text-gray-300">Velocidad Inicial (m/s)</Label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={0.1}
+            value={initialVelocity}
+            onChange={e => !isRunning && setInitialVelocity(Number(e.target.value))}
+            disabled={isRunning}
+            className="w-full px-3 py-2 rounded-lg bg-gray-700 text-white disabled:opacity-50"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-gray-300">Posición Inicial (m)</Label>
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            step={0.1}
+            value={initialPosition}
+            onChange={e => !isRunning && setInitialPosition(Number(e.target.value))}
+            disabled={isRunning}
+            className="w-full px-3 py-2 rounded-lg bg-gray-700 text-white disabled:opacity-50"
+          />
+        </div>
+        {/* Vehicle Type */}
+        <div className="space-y-2">
+          <Label className="text-gray-300">Tipo de Vehículo</Label>
+          <div className="grid grid-cols-1 gap-2">
+            <button
+              onClick={() => handleVehicleChange('car')}
+              disabled={isRunning}
+              className={`p-3 rounded-lg transition-all ${
+                vehicleType === 'car' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50 flex items-center justify-center gap-2`}
+            >
+              <Car size={18} />
+              Carro Deportivo
+            </button>
+            <button
+              onClick={() => handleVehicleChange('motorcycle')}
+              disabled={isRunning}
+              className={`p-3 rounded-lg transition-all ${
+                vehicleType === 'motorcycle' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50 flex items-center justify-center gap-2`}
+            >
+              <Bike size={18} />
+              Moto Deportiva
+            </button>
+            <button
+              onClick={() => handleVehicleChange('truck')}
+              disabled={isRunning}
+              className={`p-3 rounded-lg transition-all ${
+                vehicleType === 'truck' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50 flex items-center justify-center gap-2`}
+            >
+              <Truck size={18} />
+              Pickup Deportiva
+            </button>
+          </div>
+        </div>
+
+        {/* Custom Image Upload */}
+        <div className="space-y-2">
+          <Label className="text-gray-300">Imagen Personalizada (opcional)</Label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="file"
+              accept="image/*"
+              disabled={isRunning}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f && setImageUrl) {
+                  const reader = new FileReader();
+                  reader.onload = () => setImageUrl(String(reader.result));
+                  reader.readAsDataURL(f);
+                }
+              }}
+              className="text-sm"
+            />
+            {setImageUrl && (
+              <button
+                onClick={() => setImageUrl(null)}
+                disabled={isRunning}
+                className="px-3 py-2 rounded bg-gray-700 text-white text-sm"
+              >
+                Borrar
+              </button>
+            )}
+          </div>
+          {imageUrl && (
+            <div className="mt-2">
+              <img src={imageUrl} alt="preview" className="w-40 h-20 object-contain rounded shadow-md" />
+            </div>
+          )}
+        </div>
+
+        {/* Force Type */}
+        <div className="space-y-2">
+          <Label className="text-gray-300">Tipo de Fuerza</Label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => !isRunning && setForceType('constant')}
+              disabled={isRunning}
+              className={`px-2 py-2 rounded text-xs transition-all ${
+                forceType === 'constant' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50`}
+            >
+              ⚡ Constante
+            </button>
+            <button
+              onClick={() => !isRunning && setForceType('increasing')}
+              disabled={isRunning}
+              className={`px-2 py-2 rounded text-xs transition-all ${
+                forceType === 'increasing' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50`}
+            >
+              📈 Creciente
+            </button>
+            <button
+              onClick={() => !isRunning && setForceType('decreasing')}
+              disabled={isRunning}
+              className={`px-2 py-2 rounded text-xs transition-all ${
+                forceType === 'decreasing' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50`}
+            >
+              📉 Decreciente
+            </button>
+            <button
+              onClick={() => !isRunning && setForceType('impulse')}
+              disabled={isRunning}
+              className={`px-2 py-2 rounded text-xs transition-all ${
+                forceType === 'impulse' 
+                  ? buttonColor + ' text-white' 
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              } disabled:opacity-50`}
+            >
+              ⚡ Impulsos
+            </button>
+          </div>
+        </div>
+
+        {/* Mass */}
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label className="text-gray-300">Masa (m)</Label>
+            <span className="text-white">{mass} kg</span>
+          </div>
+          <Slider
+            value={[mass]}
+            onValueChange={(value: number[]) => setMass(value[0])}
+            min={100}
+            max={5000}
+            step={50}
+            disabled={isRunning}
+            className="cursor-pointer"
+          />
+        </div>
+
+        {/* Applied Force */}
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label className="text-gray-300">Fuerza Aplicada (F)</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-white">{appliedForce !== null ? `${appliedForce} N` : '—'}</span>
+              <input
+                type="number"
+                min={0}
+                max={10000}
+                step={1}
+                value={appliedForce ?? ''}
+                onChange={(e) => !isRunning && setAppliedForce(e.target.value === '' ? null : Number(e.target.value))}
+                disabled={isRunning}
+                className="w-28 bg-gray-700 text-white px-2 py-1 rounded-lg text-sm"
+                placeholder="N"
+              />
+            </div>
+          </div>
+          <Slider
+            value={[appliedForce ?? 0]}
+            onValueChange={(value: number[]) => setAppliedForce(Number(value[0]))}
+            min={0}
+            max={3000}
+            step={50}
+            disabled={isRunning}
+            className="cursor-pointer"
+          />
+        </div>
+
+        {/* Friction */}
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label className="text-gray-300">Fricción (f)</Label>
+            <span className="text-white">{friction} N</span>
+          </div>
+          <Slider
+            value={[friction]}
+            onValueChange={(value: number[]) => setFriction(value[0])}
+            min={0}
+            max={500}
+            step={10}
+            disabled={isRunning}
+            className="cursor-pointer"
+          />
+        </div>
+
+        {/* Net Force Display */}
+        <div className="bg-gray-950/50 p-3 rounded-lg border border-gray-700">
+          <Label className="text-gray-400 text-xs">Fuerza Neta</Label>
+          <div className="text-xl text-white mt-1">
+            {appliedForce !== null ? `${appliedForce - friction} N` : '—'}
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            F_neta = {appliedForce !== null ? appliedForce : '—'} - {friction}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
