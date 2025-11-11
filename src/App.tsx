@@ -64,6 +64,15 @@ export default function App() {
 
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
+  // Responsive helper to force two-column layout client-side when width >= 600px
+  const [isWide, setIsWide] = useState<boolean>(false);
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 600);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  
   
   // Vehicle 1 refs
   const v1VelocityRef = useRef<number>(0);
@@ -269,7 +278,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black overflow-x-hidden">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 p-0.5">
         <div className="bg-gray-900/95 backdrop-blur-lg">
@@ -289,7 +298,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="max-w-[1600px] mx-auto p-4 space-y-4">
+  <div className="max-w-[1600px] mx-auto p-4 space-y-4 w-full" style={{ maxWidth: '100vw' }}>
         {/* Winner Banner */}
         {winner && (
           <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 rounded-xl p-6 shadow-2xl animate-pulse border-4 border-yellow-300">
@@ -314,7 +323,7 @@ export default function App() {
             <div className="flex flex-col md:flex-row md:items-center gap-4">
               {/* Left: Selectors (distance + time) */}
               <div className="w-full md:flex-1 md:min-w-[280px] md:max-w-[760px]">
-                <div className="grid grid-cols-2 gap-4 items-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 h-5">
                       <Target className="text-yellow-400" size={20} />
@@ -507,7 +516,11 @@ export default function App() {
         />
 
     {/* Vehicle Controls - Side by Side */}
-    <div className="grid grid-cols-2 gap-4">
+  {/* Vehicle Controls: side-by-side from small tablet (sm) upwards */}
+  <div
+    className="grid grid-cols-1 sm:grid-cols-2 gap-4 two-column-fallback"
+    style={isWide ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } : { gridTemplateColumns: '1fr' }}
+  >
           <RaceControls
             vehicleNumber={1}
             vehicleType={vehicle1Type}
@@ -554,7 +567,11 @@ export default function App() {
         </div>
 
     {/* Physics Metrics - Side by Side with more spacing */}
-    <div className="grid grid-cols-2 gap-4">
+  {/* Physics Metrics: side-by-side from small tablet (sm) upwards */}
+  <div
+    className="grid grid-cols-1 sm:grid-cols-2 gap-4 two-column-fallback"
+    style={isWide ? { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' } : { gridTemplateColumns: '1fr' }}
+  >
           <PhysicsMetrics
             vehicleNumber={1}
             currentData={vehicle1Current}

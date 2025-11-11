@@ -139,9 +139,11 @@ export function RaceScene({
   , vehicle1Image, vehicle2Image
 }: RaceSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [visibleWidth, setVisibleWidth] = useState<number>(1600);
+  const [visibleWidth, setVisibleWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1600);
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   const movingRef = useRef<HTMLDivElement | null>(null);
+  // Escala visual uniforme para todos los vehículos (imágenes y vectoriales)
+  const vehicleScale = 1.35;
   
 
   useEffect(() => {
@@ -158,11 +160,23 @@ export function RaceScene({
   const getVehicle = (type: VehicleType, color: 'blue' | 'red') => {
     switch (type) {
       case 'car':
-        return <SportsCar isRunning={isRunning} color={color} />;
+        return (
+          <div style={{ transform: `scale(${vehicleScale})`, transformOrigin: 'left bottom' }}>
+            <SportsCar isRunning={isRunning} color={color} />
+          </div>
+        );
       case 'motorcycle':
-        return <SportsMotorcycle isRunning={isRunning} color={color} />;
+        return (
+          <div style={{ transform: `scale(${vehicleScale})`, transformOrigin: 'left bottom' }}>
+            <SportsMotorcycle isRunning={isRunning} color={color} />
+          </div>
+        );
       case 'truck':
-        return <SportsTruck isRunning={isRunning} color={color} />;
+        return (
+          <div style={{ transform: `scale(${vehicleScale})`, transformOrigin: 'left bottom' }}>
+            <SportsTruck isRunning={isRunning} color={color} />
+          </div>
+        );
     }
   };
 
@@ -196,18 +210,25 @@ export function RaceScene({
   const leftPaddingPx = Math.min(320, Math.max(40, Math.round(visibleWidth * 0.08)));
   // Larger marker offset to move markers more to the right (so 0m sits under cars)
   const markerOffsetPx = Math.max(36, Math.round(visibleWidth * 0.06));
-  // compute total track width in pixels including left and right paddings
-  const trackTotalWidthPx = leftPaddingPx + raceDistance * 1.6 + rightPaddingPx + 200; // +200 safety
+  // ancho lógico (incluye paddings y desplazamiento de marcadores/meta)
+  const trackLogicalWidthPx = leftPaddingPx + markerOffsetPx + raceDistance * 1.6 + rightPaddingPx;
+  const safetyPx = 240; // margen de seguridad
+  const trackTotalWidthPx = trackLogicalWidthPx + safetyPx;
+  // tiles de 1600px: asegura un tile extra
+  const tileRepeatCount = Math.max(1, Math.ceil(trackTotalWidthPx / 1600) + 1);
+  const laneTilesWidthPx = tileRepeatCount * 1600;
   const maxCameraOffsetPixels = Math.max(0, trackTotalWidthPx - visibleWidth);
   // Cámara final en píxeles, nunca negativa y nunca por encima del máximo
   const cameraX = Math.max(0, Math.min(cameraOffsetPixels, maxCameraOffsetPixels));
 
   // activate smoothing RAF loop to interpolate towards cameraX
   useSmoothCamera(cameraX, movingRef, parallaxRef);
+  // Position the lane labels slightly before the starting car position
+  const laneLabelLeft = Math.max(8, leftPaddingPx - 140);
 
   // Repeat scenario background horizontally so it never ends
   const getScenario = () => {
-    const repeatCount = Math.ceil((raceDistance * 1.6 + 1600) / 1600); // enough to cover camera movement
+    const repeatCount = tileRepeatCount; // sincronizado con los lanes
     switch (scenario) {
       case 'highway':
         return (
@@ -269,7 +290,7 @@ export function RaceScene({
 
   return (
     <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl overflow-hidden border-2 border-gray-700 shadow-2xl">
-  <div ref={containerRef} className="relative h-[600px] overflow-hidden">
+  <div ref={containerRef} className="relative h-[600px] overflow-hidden" data-allow-overflow="true">
         {/* Base background (fijo) para evitar áreas vacías si el layer desplazable se mueve) */}
         <div className="absolute inset-0 -z-10">
           {/* Base gradient por escenario */}
@@ -316,16 +337,16 @@ export function RaceScene({
         </div>
         
   {/* Grass */}
-  <div className="absolute bottom-[310px] left-0 right-[200%] h-6 bg-gradient-to-b from-green-600 to-green-700" />
+  <div className="absolute bottom-[310px] left-0 right-0 w-full h-6 bg-gradient-to-b from-green-600 to-green-700" />
 
         {/* Track Container with Camera Movement */}
         <div
           ref={movingRef}
           className="absolute bottom-0 left-0 h-[310px] will-change-transform"
-          style={{ width: `${Math.max(1600, leftPaddingPx + raceDistance * 1.6 + rightPaddingPx + 200)}px`, transform: `translate3d(${-cameraX}px,0,0)` }}
+          style={{ width: `${Math.max(visibleWidth, laneTilesWidthPx)}px`, transform: `translate3d(${-cameraX}px,0,0)` }}
         >
           {/* Repeat road lanes horizontally */}
-          {Array.from({ length: Math.ceil((raceDistance * 1.6 + 1600) / 1600) }).map((_, idx) => (
+          {Array.from({ length: tileRepeatCount }).map((_, idx) => (
             <>
               {/* Lane 1 (Blue - Top) */}
               <div
@@ -366,13 +387,13 @@ export function RaceScene({
           {/* Lane labels (render once, not per-tile) */}
           <div
             className="absolute z-30"
-            style={{ left: `${leftPaddingPx + 12}px`, top: `${4}px` }}
+            style={{ left: `${laneLabelLeft}px`, top: `${4}px` }}
           >
             <div className="bg-blue-600 text-white px-4 py-2 rounded-full shadow-xl whitespace-nowrap">Vehículo 1</div>
           </div>
           <div
             className="absolute z-30"
-            style={{ left: `${leftPaddingPx + 12}px`, top: `${155 + 4}px` }}
+            style={{ left: `${laneLabelLeft}px`, top: `${155 + 4}px` }}
           >
             <div className="bg-red-600 text-white px-4 py-2 rounded-full shadow-xl whitespace-nowrap">Vehículo 2</div>
           </div>
@@ -422,12 +443,13 @@ export function RaceScene({
                     (() => {
                       const sz = vehicleSize(vehicle1Type);
                       return (
-                        <img
-                          src={vehicle1Image}
-                          alt="Vehicle 1"
-                          style={{ width: sz.width, height: sz.height, objectFit: 'contain' }}
-                          className="rounded-lg shadow-2xl"
-                        />
+                        <div style={{ transform: `scale(${vehicleScale})`, transformOrigin: 'left bottom' }}>
+                          <img
+                            src={vehicle1Image}
+                            alt="Vehicle 1"
+                            style={{ width: sz.width, height: sz.height, objectFit: 'contain', background: 'transparent' }}
+                          />
+                        </div>
                       );
                     })()
                   ) : getVehicle(vehicle1Type, 'blue')}
@@ -453,12 +475,13 @@ export function RaceScene({
                 (() => {
                   const sz = vehicleSize(vehicle2Type);
                   return (
-                    <img
-                      src={vehicle2Image}
-                      alt="Vehicle 2"
-                      style={{ width: sz.width, height: sz.height, objectFit: 'contain' }}
-                      className="rounded-lg shadow-2xl"
-                    />
+                    <div style={{ transform: `scale(${vehicleScale})`, transformOrigin: 'left bottom' }}>
+                      <img
+                        src={vehicle2Image}
+                        alt="Vehicle 2"
+                        style={{ width: sz.width, height: sz.height, objectFit: 'contain', background: 'transparent' }}
+                      />
+                    </div>
                   );
                 })()
               ) : getVehicle(vehicle2Type, 'red')}

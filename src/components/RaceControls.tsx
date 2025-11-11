@@ -26,6 +26,73 @@ interface RaceControlsProps {
   setImageUrl?: (url: string | null) => void;
 }
 
+interface ImageUploaderProps {
+  vehicleNumber: number;
+  isRunning: boolean;
+  imageUrl?: string | null;
+  setImageUrl?: (url: string | null) => void;
+}
+
+function ImageUploader({ vehicleNumber, isRunning, imageUrl, setImageUrl }: ImageUploaderProps) {
+  const [fileName, setFileName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!imageUrl) setFileName(null);
+  }, [imageUrl]);
+
+  const inputId = `file-${vehicleNumber}`;
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      setFileName(f.name);
+      if (setImageUrl) {
+        const reader = new FileReader();
+        reader.onload = () => setImageUrl(String(reader.result));
+        reader.readAsDataURL(f);
+      }
+    }
+  };
+
+  return (
+    <div className="flex gap-2 items-center">
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        disabled={isRunning}
+        onChange={handleChange}
+        className="sr-only"
+        // force-hide the native chooser regardless of CSS (some browsers/show builds may still render it)
+        style={{ display: 'none' }}
+      />
+      <label
+        htmlFor={isRunning ? undefined : inputId}
+        aria-disabled={isRunning}
+        className={`px-3 py-2 rounded text-sm ${isRunning ? 'bg-gray-600 text-gray-300 cursor-not-allowed' : 'bg-gray-700 hover:bg-gray-600 text-white cursor-pointer'}`}
+      >
+        Haz clic aquí
+      </label>
+      <div className="flex items-center gap-2">
+        {fileName ? (
+          <span className="text-white">{fileName}</span>
+        ) : (
+          <span className="text-gray-300">Ningún archivo</span>
+        )}
+        {setImageUrl && imageUrl && (
+          <button
+            onClick={() => { setImageUrl(null); setFileName(null); }}
+            disabled={isRunning}
+            className="px-3 py-2 rounded bg-gray-700 text-white text-sm"
+          >
+            Borrar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function RaceControls({
   vehicleNumber,
   vehicleType,
@@ -131,6 +198,63 @@ export function RaceControls({
     setMassError(null);
   };
 
+  // Friction input validation
+  const MIN_FRICTION = 0;
+  const MAX_FRICTION = 500;
+  const [frictionInputState, setFrictionInputState] = useState<string>(String(friction));
+  const [frictionError, setFrictionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFrictionInputState(String(friction));
+    setFrictionError(null);
+  }, [friction]);
+
+  const handleFrictionInput = (raw: string) => {
+    if (isRunning) return;
+    setFrictionInputState(raw);
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      setFrictionError('Introduce un valor');
+      return;
+    }
+    const n = Number(trimmed);
+    if (Number.isNaN(n)) {
+      setFrictionError('Valor no válido');
+      return;
+    }
+    if (n < MIN_FRICTION) {
+      setFrictionError(`Mínimo ${MIN_FRICTION} N`);
+      return;
+    }
+    if (n > MAX_FRICTION) {
+      setFrictionError(`Máximo ${MAX_FRICTION} N`);
+      return;
+    }
+    setFrictionError(null);
+  };
+
+  const commitFriction = () => {
+    if (isRunning) return;
+    const trimmed = frictionInputState.trim();
+    if (trimmed === '') {
+      setFriction(MIN_FRICTION);
+      setFrictionInputState(String(MIN_FRICTION));
+      setFrictionError(null);
+      return;
+    }
+    let n = Number(trimmed);
+    if (Number.isNaN(n)) {
+      setFriction(MIN_FRICTION);
+      setFrictionInputState(String(MIN_FRICTION));
+      setFrictionError(null);
+      return;
+    }
+    n = Math.round(Math.max(MIN_FRICTION, Math.min(MAX_FRICTION, n)));
+    setFriction(n);
+    setFrictionInputState(String(n));
+    setFrictionError(null);
+  };
+
   return (
     <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl border-2 border-gray-700 shadow-2xl overflow-hidden">
       <div className={`bg-gradient-to-r ${headerColor} p-4`}>
@@ -189,34 +313,20 @@ export function RaceControls({
         {/* Custom Image Upload */}
         <div className="space-y-2">
           <Label className="text-gray-300">Imagen Personalizada (opcional)</Label>
-          <div className="flex gap-2 items-center">
-            <input
-              type="file"
-              accept="image/*"
-              disabled={isRunning}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f && setImageUrl) {
-                  const reader = new FileReader();
-                  reader.onload = () => setImageUrl(String(reader.result));
-                  reader.readAsDataURL(f);
-                }
-              }}
-              className="text-sm"
-            />
-            {setImageUrl && (
-              <button
-                onClick={() => setImageUrl(null)}
-                disabled={isRunning}
-                className="px-3 py-2 rounded bg-gray-700 text-white text-sm"
-              >
-                Borrar
-              </button>
-            )}
-          </div>
+          <ImageUploader
+            vehicleNumber={vehicleNumber}
+            isRunning={isRunning}
+            imageUrl={imageUrl}
+            setImageUrl={setImageUrl}
+          />
           {imageUrl && (
             <div className="mt-2">
-              <img src={imageUrl} alt="preview" className="w-40 h-20 object-contain rounded shadow-md" />
+              {/* Larger, responsive preview: small on very small screens, bigger on desktop */}
+              <img
+                src={imageUrl}
+                alt="preview"
+                className="w-56 h-32 sm:w-72 sm:h-40 md:w-96 md:h-56 object-contain rounded shadow-md"
+              />
             </div>
           )}
         </div>
@@ -336,19 +446,34 @@ export function RaceControls({
 
         {/* Friction */}
         <div className="space-y-2">
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between gap-3">
             <Label className="text-gray-300">Fricción (f)</Label>
-            <span className="text-white">{friction} N</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={500}
+                step={1}
+                value={frictionInputState}
+                onChange={e => handleFrictionInput(e.target.value)}
+                onBlur={commitFriction}
+                onKeyDown={(e) => { if (e.key === 'Enter') commitFriction(); }}
+                disabled={isRunning}
+                className="w-28 bg-gray-700 text-white px-2 py-1 rounded-lg text-sm"
+              />
+              <span className="text-white">N</span>
+            </div>
           </div>
           <Slider
             value={[friction]}
-            onValueChange={(value: number[]) => setFriction(value[0])}
+            onValueChange={(value: number[]) => { setFriction(value[0]); setFrictionInputState(String(value[0])); }}
             min={0}
             max={500}
             step={10}
             disabled={isRunning}
             className="cursor-pointer"
           />
+          {frictionError && <p className="text-xs text-rose-400 mt-1">{frictionError}</p>}
         </div>
 
         {/* Net Force Display */}

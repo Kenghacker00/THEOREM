@@ -127,7 +127,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
   }
 }
 
@@ -188,4 +188,28 @@
 
 html {
   font-size: var(--font-size);
+}
+
+/* Prevent horizontal scroll bleeding on mobile/tablet due to wide absolute children */
+html, body, #root {
+  overflow-x: hidden;
+  overflow-x: clip;
+  width: 100%;
+  max-width: 100vw;
+  overscroll-behavior-x: none;
+}
+
+/* Explicit fallback grid for two-column layout starting at small tablet widths
+   This ensures controls/metrics appear side-by-side even if Tailwind breakpoints
+   or build pipeline differ between environments. */
+.two-column-fallback {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 600px) {
+  .two-column-fallback {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
