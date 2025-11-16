@@ -217,6 +217,9 @@ export function RaceScene({
   const trackTotalWidthPx = trackLogicalWidthPx + safetyPx;
   // Ancho por tile para lanes/escenario (1600px)
   const TILE_W = 1600;
+  // slight overlap in pixels to avoid visible seams when tiles are translated with
+  // fractional pixels by the camera (subpixel antialiasing can create 1px gaps)
+  const TILE_OVERLAP = 1; 
   // Cantidad de tiles visibles + buffer (virtualización)
   const startTile = Math.max(0, Math.floor(cameraOffsetPixels / TILE_W) - 1);
   const tilesToRender = Math.max(3, Math.ceil(visibleWidth / TILE_W) + 2);
@@ -241,7 +244,7 @@ export function RaceScene({
                 <div
                   key={`stadium-${idx}`}
                   className="absolute inset-y-0"
-                  style={{ left: `${idx * TILE_W}px`, width: `${TILE_W}px` }}
+                  style={{ left: `${idx * TILE_W - TILE_OVERLAP}px`, width: `${TILE_W + TILE_OVERLAP}px` }}
                 >
                   {/* Base green (outfield) */}
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, #166534, #14532d)' }} />
@@ -284,7 +287,7 @@ export function RaceScene({
                 <div
                   key={idx}
                   className="absolute inset-y-0"
-                  style={{ left: `${idx * TILE_W}px`, width: `${TILE_W}px`, background: 'linear-gradient(to bottom, #38bdf8, #7dd3fc, #bae6fd)' }}
+                  style={{ left: `${idx * TILE_W - TILE_OVERLAP}px`, width: `${TILE_W + TILE_OVERLAP}px`, background: 'linear-gradient(to bottom, #38bdf8, #7dd3fc, #bae6fd)' }}
                 />
               );
             })}
@@ -299,7 +302,7 @@ export function RaceScene({
                 <div
                   key={idx}
                   className="absolute inset-y-0"
-                  style={{ left: `${idx * TILE_W}px`, width: `${TILE_W}px`, background: 'linear-gradient(to bottom, #fdba74, #fbcfe8, #c4b5fd)' }}
+                  style={{ left: `${idx * TILE_W - TILE_OVERLAP}px`, width: `${TILE_W + TILE_OVERLAP}px`, background: 'linear-gradient(to bottom, #fdba74, #fbcfe8, #c4b5fd)' }}
                 />
               );
             })}
@@ -314,7 +317,7 @@ export function RaceScene({
                 <div
                   key={idx}
                   className="absolute inset-y-0"
-                  style={{ left: `${idx * TILE_W}px`, width: `${TILE_W}px`, background: 'linear-gradient(to bottom, #fef9c3, #fde68a, #fef08a)' }}
+                  style={{ left: `${idx * TILE_W - TILE_OVERLAP}px`, width: `${TILE_W + TILE_OVERLAP}px`, background: 'linear-gradient(to bottom, #fef9c3, #fde68a, #fef08a)' }}
                 />
               );
             })}
@@ -329,7 +332,7 @@ export function RaceScene({
                 <div
                   key={idx}
                   className="absolute inset-y-0"
-                  style={{ left: `${idx * TILE_W}px`, width: `${TILE_W}px`, background: 'linear-gradient(to bottom, #3b82f6, #93c5fd, #bae6fd)' }}
+                  style={{ left: `${idx * TILE_W - TILE_OVERLAP}px`, width: `${TILE_W + TILE_OVERLAP}px`, background: 'linear-gradient(to bottom, #3b82f6, #93c5fd, #bae6fd)' }}
                 />
               );
             })}
@@ -730,19 +733,45 @@ export function RaceScene({
 // Note: we intentionally keep the loop internal and mutate DOM transforms directly to
 // avoid forcing React re-renders at 60fps.
 function useSmoothCamera(cameraX: number, movingRef: React.RefObject<HTMLDivElement | null>, parallaxRef: React.RefObject<HTMLDivElement | null>) {
+  // Use an internal mutable ref for the animated camera position and a separate
+  // targetRef so we don't recreate the RAF loop every time `cameraX` changes.
   const cameraRef = useRef<number>(cameraX);
+  const targetRef = useRef<number>(cameraX);
+
+  // Keep the targetRef updated when cameraX changes (cheap, runs each render)
+  useEffect(() => { targetRef.current = cameraX; }, [cameraX]);
+
   useEffect(() => {
     let raf = 0;
+
+    // Hint the browser to promote these elements to their own layer for smoother
+    // transform animations (GPU compositing). We set will-change once on mount.
+    if (movingRef.current) movingRef.current.style.willChange = 'transform';
+    if (parallaxRef.current) parallaxRef.current.style.willChange = 'transform';
+
     const step = () => {
-      // interpolate (lerp) towards target
-      cameraRef.current += (cameraX - cameraRef.current) * 0.12;
-      if (movingRef.current) movingRef.current.style.transform = `translate3d(${-cameraRef.current}px,0,0)`;
-      if (parallaxRef.current) parallaxRef.current.style.transform = `translate3d(${-cameraRef.current * 0.3}px,0,0)`;
+      // interpolate (lerp) towards targetRef.current
+      // increase factor slightly to reduce perceived lag at high speeds
+      const lerpFactor = 0.20; // was 0.12
+      cameraRef.current += (targetRef.current - cameraRef.current) * lerpFactor;
+
+      // snap-to-target when very close to avoid tiny subpixel jitter
+      if (Math.abs(targetRef.current - cameraRef.current) < 0.25) cameraRef.current = targetRef.current;
+
+      const cam = cameraRef.current;
+      if (movingRef.current) movingRef.current.style.transform = `translate3d(${-cam}px,0,0)`;
+      if (parallaxRef.current) parallaxRef.current.style.transform = `translate3d(${-cam * 0.3}px,0,0)`;
       raf = requestAnimationFrame(step);
     };
+
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [cameraX, movingRef, parallaxRef]);
+    return () => {
+      cancelAnimationFrame(raf);
+      // cleanup will-change hints
+      if (movingRef.current) movingRef.current.style.willChange = '';
+      if (parallaxRef.current) parallaxRef.current.style.willChange = '';
+    };
+  }, [movingRef, parallaxRef]);
 }
 
 // Lightweight canvas fireworks overlay used only in 'stadium' sky.
