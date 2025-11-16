@@ -6,7 +6,7 @@ import { ChartsPanel } from './components/ChartsPanel';
 import { Trophy, Target, Play, Pause, RefreshCw } from 'lucide-react';
 
 export type VehicleType = 'car' | 'motorcycle' | 'truck';
-export type ScenarioType = 'highway' | 'city' | 'desert' | 'mountain';
+export type ScenarioType = 'highway' | 'city' | 'desert' | 'mountain' | 'stadium';
 export type ForceType = 'constant' | 'increasing' | 'decreasing' | 'impulse';
 
 export interface VehicleData {
@@ -51,7 +51,7 @@ export default function App() {
   const [vehicle2InitialVelocity, setVehicle2InitialVelocity] = useState(0);
   const [vehicle2InitialPosition, setVehicle2InitialPosition] = useState(0);
 
-  const [scenario, setScenario] = useState<ScenarioType>('highway');
+  const [scenario, setScenario] = useState<ScenarioType>('stadium');
   const [isRunning, setIsRunning] = useState(false);
   const [winner, setWinner] = useState<number | null>(null);
   const [raceDistance, setRaceDistance] = useState<number | null>(null); // Parametrizable (optional)
@@ -298,24 +298,8 @@ export default function App() {
         </div>
       </div>
 
-  <div className="max-w-[1600px] mx-auto p-4 space-y-4 w-full" style={{ maxWidth: '100vw' }}>
-        {/* Winner Banner */}
-        {winner && (
-          <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 rounded-xl p-6 shadow-2xl animate-pulse border-4 border-yellow-300">
-            <div className="flex items-center justify-center gap-4">
-              <Trophy className="text-white" size={48} />
-              <div className="text-center">
-                <div className="text-white text-3xl">
-                  🏆 ¡VEHÍCULO {winner} GANÓ LA CARRERA! 🏆
-                </div>
-                <div className="text-yellow-100 text-lg mt-1">
-                  Distancia completada: {raceDistance}m
-                </div>
-              </div>
-              <Trophy className="text-white" size={48} />
-            </div>
-          </div>
-        )}
+  <div className="max-w-[1600px] mx-auto p-4 space-y-4 w-full">
+        {/* Winner Banner is rendered above the RaceScene to avoid taking the top of the full template */}
 
         {/* Simulation Controls - Horizontal bar at top */}
         <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg border border-gray-700 shadow-xl">
@@ -472,25 +456,28 @@ export default function App() {
               </div>
 
               {/* Right: Scenario Selector */}
-              <div className="w-full md:w-auto flex md:justify-end">
-                <div className="text-white text-sm mb-1 text-right">Escenario:</div>
-                <div className="grid grid-cols-4 gap-2">
-                  {(['highway', 'city', 'desert', 'mountain'] as ScenarioType[]).map((s) => (
+              <div className="w-full md:w-auto flex items-center md:justify-end gap-3">
+                <div className="text-white text-sm mr-2">Escenario:</div>
+                <div className="flex items-center gap-2">
+                  {(['highway', 'city', 'desert', 'mountain', 'stadium'] as ScenarioType[]).map((s) => (
                     <button
                       key={s}
                       onClick={() => !isRunning && setScenario(s)}
                       disabled={isRunning}
-                      className={`p-2 rounded-lg transition-all text-lg ${
+                      className={`w-10 h-10 flex items-center justify-center rounded-md transition-all text-lg ${
                         scenario === s
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white'
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-xl'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       } disabled:opacity-50`}
-                      title={s === 'highway' ? 'Carretera' : s === 'city' ? 'Ciudad' : s === 'desert' ? 'Desierto' : 'Montaña'}
+                      title={
+                        s === 'highway' ? 'Carretera' :
+                        s === 'city' ? 'Ciudad' :
+                        s === 'desert' ? 'Desierto' :
+                        s === 'mountain' ? 'Montaña' :
+                        'Estadio'
+                      }
                     >
-                      {s === 'highway' && '🛣️'}
-                      {s === 'city' && '🏙️'}
-                      {s === 'desert' && '🏜️'}
-                      {s === 'mountain' && '⛰️'}
+                      <span className="text-[16px] leading-none">{s === 'highway' ? '🛣️' : s === 'city' ? '🏙️' : s === 'desert' ? '🏜️' : s === 'mountain' ? '⛰️' : '🏟️'}</span>
                     </button>
                   ))}
                 </div>
@@ -500,6 +487,25 @@ export default function App() {
         </div>
 
         {/* Race Scene - FULL WIDTH */}
+        {/* Winner Banner (now placed above the RaceScene so it doesn't occupy the top of the full template) */}
+        {winner && (
+          <div className="max-w-full mx-auto px-0">
+            <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 rounded-xl p-4 shadow-2xl border-4 border-yellow-300">
+              <div className="flex items-center justify-center gap-4">
+                <Trophy className="text-white" size={36} />
+                <div className="text-center">
+                  <div className="text-white text-2xl font-semibold">
+                    🏆 ¡VEHÍCULO {winner} GANÓ LA CARRERA! 🏆
+                  </div>
+                  <div className="text-yellow-100 text-sm mt-1">
+                    Distancia completada: {raceDistance}m
+                  </div>
+                </div>
+                <Trophy className="text-white" size={36} />
+              </div>
+            </div>
+          </div>
+        )}
         <RaceScene
           vehicle1Type={vehicle1Type}
           vehicle1Position={vehicle1Current.position}
