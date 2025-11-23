@@ -15,6 +15,9 @@ interface RaceSceneProps {
   raceTime: number; // tiempo total parametrizable
   vehicle1Image?: string | null;
   vehicle2Image?: string | null;
+  // optional high-frequency refs from main thread worker
+  vehicle1PositionRef?: React.RefObject<number>;
+  vehicle2PositionRef?: React.RefObject<number>;
 }
 
 // Vehicle components
@@ -135,13 +138,18 @@ export function RaceScene({
   scenario,
   isRunning,
   raceDistance,
-  raceTime // nuevo parámetro
-  , vehicle1Image, vehicle2Image
+  raceTime, // nuevo parámetro
+  vehicle1Image,
+  vehicle2Image,
+  vehicle1PositionRef,
+  vehicle2PositionRef
 }: RaceSceneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [visibleWidth, setVisibleWidth] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1600);
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   const movingRef = useRef<HTMLDivElement | null>(null);
+  const vehicle1ElRef = useRef<HTMLDivElement | null>(null);
+  const vehicle2ElRef = useRef<HTMLDivElement | null>(null);
   // Escala visual uniforme para todos los vehículos (imágenes y vectoriales)
   const vehicleScale = 1.35;
   const PX_PER_M = 1.6; // factor único de conversión m -> px
@@ -227,8 +235,27 @@ export function RaceScene({
   // Cámara final en píxeles, nunca negativa y nunca por encima del máximo
   const cameraX = Math.max(0, Math.min(cameraOffsetPixels, maxCameraOffsetPixels));
 
-  // activate smoothing RAF loop to interpolate towards cameraX
-  useSmoothCamera(cameraX, movingRef, parallaxRef);
+  // cameraTargetRef will be updated at RAF pace from high-frequency refs (if provided)
+  const cameraTargetRef = useRef<number>(cameraX);
+  useEffect(() => {
+    let raf = 0;
+    const step = () => {
+      // Prefer high-frequency refs when available (they're updated by the worker)
+      const v1m = (vehicle1PositionRef && vehicle1PositionRef.current !== undefined) ? vehicle1PositionRef.current : vehicle1Position;
+      const v2m = (vehicle2PositionRef && vehicle2PositionRef.current !== undefined) ? vehicle2PositionRef.current : vehicle2Position;
+      const lead = Math.max(v1m, v2m);
+      const cameraOffsetMetersLocal = lead > 200 ? Math.min(lead - 200, Math.max(0, raceDistance - 200)) : 0;
+      const camPx = Math.max(0, Math.min(cameraOffsetMetersLocal * PX_PER_M, maxCameraOffsetPixels));
+      cameraTargetRef.current = camPx;
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle1Position, vehicle2Position, raceDistance, PX_PER_M, maxCameraOffsetPixels]);
+
+  // activate smoothing RAF loop to interpolate towards cameraTargetRef
+  useSmoothCamera(cameraTargetRef, movingRef, parallaxRef);
   // Position the lane labels slightly before the starting car position
   const laneLabelLeft = Math.max(8, leftPaddingPx - 140);
 
@@ -349,6 +376,50 @@ export function RaceScene({
   const lastMarkerM = Math.min(raceDistance, Math.floor(((visibleEndPx - leftPaddingPx - markerOffsetPx) / PX_PER_M) / markerInterval) * markerInterval);
   const markers: number[] = [];
   for (let m = firstMarkerM; m <= lastMarkerM; m += markerInterval) markers.push(m);
+
+  // Smoothly update vehicle DOM positions at RAF using high-frequency refs when available
+  useEffect(() => {
+    let raf = 0;
+    if (!vehicle1ElRef.current && !vehicle2ElRef.current) return;
+
+    // hint to browser for smoother transforms
+    if (vehicle1ElRef.current) vehicle1ElRef.current.style.willChange = 'transform';
+    if (vehicle2ElRef.current) vehicle2ElRef.current.style.willChange = 'transform';
+
+    // displayed positions (px) are smoothed locally to avoid jumps when refs update
+    let dispV1 = (vehicle1PositionRef && vehicle1PositionRef.current !== undefined ? vehicle1PositionRef.current : vehicle1Position) * PX_PER_M;
+    let dispV2 = (vehicle2PositionRef && vehicle2PositionRef.current !== undefined ? vehicle2PositionRef.current : vehicle2Position) * PX_PER_M;
+    let lastT = performance.now();
+    const SMOOTH_TAU_VEH = 0.06; // seconds
+
+    const step = (t?: number) => {
+      const now = typeof t === 'number' ? t : performance.now();
+      const dt = Math.max(0.001, (now - lastT) / 1000);
+      lastT = now;
+
+      const v1m = (vehicle1PositionRef && vehicle1PositionRef.current !== undefined) ? vehicle1PositionRef.current : vehicle1Position;
+      const v2m = (vehicle2PositionRef && vehicle2PositionRef.current !== undefined) ? vehicle2PositionRef.current : vehicle2Position;
+      const targetV1 = v1m * PX_PER_M;
+      const targetV2 = v2m * PX_PER_M;
+
+      const alpha = 1 - Math.exp(-dt / SMOOTH_TAU_VEH);
+      dispV1 += (targetV1 - dispV1) * alpha;
+      dispV2 += (targetV2 - dispV2) * alpha;
+
+      if (vehicle1ElRef.current) vehicle1ElRef.current.style.transform = `translate3d(${dispV1}px,0,0)`;
+      if (vehicle2ElRef.current) vehicle2ElRef.current.style.transform = `translate3d(${dispV2}px,0,0)`;
+
+      raf = requestAnimationFrame(step);
+    };
+
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (vehicle1ElRef.current) vehicle1ElRef.current.style.willChange = '';
+      if (vehicle2ElRef.current) vehicle2ElRef.current.style.willChange = '';
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicle1ElRef.current, vehicle2ElRef.current, vehicle1PositionRef, vehicle2PositionRef, PX_PER_M]);
 
   return (
     <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl overflow-hidden border-2 border-gray-700 shadow-2xl">
@@ -507,7 +578,7 @@ export function RaceScene({
         </div>
 
         {/* Scrolling (parallax) background */}
-  <div ref={parallaxRef} className="absolute inset-0 will-change-transform" style={{ transform: `translate3d(${-cameraX * 0.3}px,0,0)` }}>
+  <div ref={parallaxRef} className="absolute inset-0 will-change-transform">
           {getScenario()}
         </div>
         
@@ -518,7 +589,7 @@ export function RaceScene({
         <div
           ref={movingRef}
           className="absolute bottom-0 left-0 h-[310px] will-change-transform"
-          style={{ width: `${Math.max(visibleWidth, trackTotalWidthPx)}px`, transform: `translate3d(${-cameraX}px,0,0)` }}
+          style={{ width: `${Math.max(visibleWidth, trackTotalWidthPx)}px` }}
         >
           {/* Repeat road lanes horizontally (virtualized around camera) */}
           {Array.from({ length: tilesToRender }).map((_, i) => {
@@ -630,9 +701,10 @@ export function RaceScene({
 
           {/* Vehicle 1 (Blue lane - positioned absolutely) */}
           <div
+            ref={vehicle1ElRef}
             className="absolute z-30"
             style={{
-              left: `${leftPaddingPx + vehicle1Position * PX_PER_M}px`, // margen izquierdo para que se vea el 0m y el carro
+              left: `${leftPaddingPx}px`, // base left; x offset applied via transform for smooth updates
               top: 40
             }}
           >
@@ -665,9 +737,10 @@ export function RaceScene({
 
           {/* Vehicle 2 (Red lane - positioned absolutamente) */}
           <div
+            ref={vehicle2ElRef}
             className="absolute z-30"
             style={{
-              left: `${leftPaddingPx + vehicle2Position * PX_PER_M}px`, // margen izquierdo para que se vea el 0m y el carro
+              left: `${leftPaddingPx}px`, // base left; x offset applied via transform for smooth updates
               top: 185
             }}
           >
@@ -732,31 +805,30 @@ export function RaceScene({
 // interpolate towards the new target smoothly.
 // Note: we intentionally keep the loop internal and mutate DOM transforms directly to
 // avoid forcing React re-renders at 60fps.
-function useSmoothCamera(cameraX: number, movingRef: React.RefObject<HTMLDivElement | null>, parallaxRef: React.RefObject<HTMLDivElement | null>) {
-  // Use an internal mutable ref for the animated camera position and a separate
-  // targetRef so we don't recreate the RAF loop every time `cameraX` changes.
-  const cameraRef = useRef<number>(cameraX);
-  const targetRef = useRef<number>(cameraX);
-
-  // Keep the targetRef updated when cameraX changes (cheap, runs each render)
-  useEffect(() => { targetRef.current = cameraX; }, [cameraX]);
+function useSmoothCamera(cameraTargetRef: React.RefObject<number>, movingRef: React.RefObject<HTMLDivElement | null>, parallaxRef: React.RefObject<HTMLDivElement | null>) {
+  // Use an internal mutable ref for the animated camera position.
+  const cameraRef = useRef<number>(cameraTargetRef.current ?? 0);
 
   useEffect(() => {
     let raf = 0;
 
-    // Hint the browser to promote these elements to their own layer for smoother
-    // transform animations (GPU compositing). We set will-change once on mount.
+    // Promote these elements to their own layer for smoother transform animations.
     if (movingRef.current) movingRef.current.style.willChange = 'transform';
     if (parallaxRef.current) parallaxRef.current.style.willChange = 'transform';
 
-    const step = () => {
-      // interpolate (lerp) towards targetRef.current
-      // increase factor slightly to reduce perceived lag at high speeds
-      const lerpFactor = 0.20; // was 0.12
-      cameraRef.current += (targetRef.current - cameraRef.current) * lerpFactor;
+    let lastT = performance.now();
+    const SMOOTH_TAU = 0.08; // seconds, time constant for exponential smoothing
+    const step = (t?: number) => {
+      const now = typeof t === 'number' ? t : performance.now();
+      const dt = Math.max(0.001, (now - lastT) / 1000); // seconds
+      lastT = now;
+      const target = cameraTargetRef.current ?? cameraRef.current;
+      // alpha for exponential smoothing: 1 - exp(-dt/tau)
+      const alpha = 1 - Math.exp(-dt / SMOOTH_TAU);
+      cameraRef.current += (target - cameraRef.current) * alpha;
 
       // snap-to-target when very close to avoid tiny subpixel jitter
-      if (Math.abs(targetRef.current - cameraRef.current) < 0.25) cameraRef.current = targetRef.current;
+      if (Math.abs(target - cameraRef.current) < 0.25) cameraRef.current = target;
 
       const cam = cameraRef.current;
       if (movingRef.current) movingRef.current.style.transform = `translate3d(${-cam}px,0,0)`;
@@ -767,11 +839,10 @@ function useSmoothCamera(cameraX: number, movingRef: React.RefObject<HTMLDivElem
     raf = requestAnimationFrame(step);
     return () => {
       cancelAnimationFrame(raf);
-      // cleanup will-change hints
       if (movingRef.current) movingRef.current.style.willChange = '';
       if (parallaxRef.current) parallaxRef.current.style.willChange = '';
     };
-  }, [movingRef, parallaxRef]);
+  }, [cameraTargetRef, movingRef, parallaxRef]);
 }
 
 // Lightweight canvas fireworks overlay used only in 'stadium' sky.

@@ -25,9 +25,10 @@ export function PhysicsMetrics({ vehicleNumber, currentData, allData, mass, colo
   const posicionFinal = currentData.position;
   const velocidadFinal = currentData.velocity;
   
-  const aceleracionPromedio = allData.length > 0
-    ? allData.reduce((sum, d) => sum + d.acceleration, 0) / allData.length
-    : 0;
+  // Prefer Δv/Δt (more accurate globally) when we have time series; otherwise fall back to averaged samples
+  const aceleracionPromedio = (allData.length > 1 && currentData.time > 0)
+    ? ((currentData.velocity - (allData[0]?.velocity ?? 0)) / (currentData.time || 1))
+    : (allData.length > 0 ? allData.reduce((sum, d) => sum + d.acceleration, 0) / allData.length : 0);
   
   const desplazamiento = currentData.position;
   const velocidadMaxima = currentData.maxVelocity;
@@ -42,51 +43,57 @@ export function PhysicsMetrics({ vehicleNumber, currentData, allData, mass, colo
       label: 'Posición Final',
       value: posicionFinal.toFixed(2),
       unit: 'm',
-      formula: 'x = x₀ + v₀t + ½at²',
-      procedure: `Posición inicial (x₀) = 0 m
-Velocidad inicial (v₀) = 0 m/s
-Tiempo (t) = ${currentData.time.toFixed(2)} s
-Aceleración (a) = ${aceleracionPromedio.toFixed(2)} m/s²
+      formula: 'Posición (simulada) = integración numérica',
+      procedure: `La posición final se obtiene directamente de la simulación (suma de desplazamientos por paso).
 
-x = 0 + 0(${currentData.time.toFixed(2)}) + ½(${aceleracionPromedio.toFixed(2)})(${currentData.time.toFixed(2)})²
-x = ${posicionFinal.toFixed(2)} m`
+    Posición final (simulada) = ${posicionFinal.toFixed(2)} m
+    Tiempo total = ${currentData.time.toFixed(2)} s
+    Este valor no necesariamente concuerda con la fórmula cerrada x = x₀ + v₀t + ½at² si la fuerza no es constante.`
     },
     {
       id: 'velocity',
       label: 'Velocidad Final',
       value: velocidadFinal.toFixed(2),
       unit: 'm/s',
-      formula: 'v = v₀ + at',
-      procedure: `Velocidad inicial (v₀) = 0 m/s
-Aceleración promedio (a) = ${aceleracionPromedio.toFixed(2)} m/s²
-Tiempo (t) = ${currentData.time.toFixed(2)} s
+      formula: 'Velocidad (simulada) = integración numérica / RK2',
+      procedure: `La velocidad final proviene de la integración numérica (Heun/RK2) usada en la simulación.
 
-v = 0 + (${aceleracionPromedio.toFixed(2)})(${currentData.time.toFixed(2)})
-v = ${velocidadFinal.toFixed(2)} m/s`
+    Velocidad final (simulada) = ${velocidadFinal.toFixed(2)} m/s
+    Promedio de aceleración usado (Δv/Δt) = ${aceleracionPromedio.toFixed(4)} m/s²
+    Esto puede diferir de la fórmula v = v₀ + at si la fuerza varía durante la simulación.`
+    },
+    {
+      id: 'instantAcceleration',
+      label: 'Aceleración Instantánea',
+      value: currentData.acceleration.toFixed(2),
+      unit: 'm/s²',
+      formula: 'a(t) = F_neta(t) / m (instantánea)',
+      procedure: `Valor instantáneo tomado del último tick de simulación.
+
+    Aceleración actual = ${currentData.acceleration.toFixed(4)} m/s²
+    Calculada en cada paso como a = F_neta / m (t)`
     },
     {
       id: 'acceleration',
       label: 'Aceleración Promedio',
       value: aceleracionPromedio.toFixed(2),
       unit: 'm/s²',
-      formula: 'a = F_neta / m',
-      procedure: `Fuerza neta promedio (F) = ${fuerzaPromedio.toFixed(2)} N
-Masa (m) = ${mass} kg
+      formula: 'a_avg = Δv / Δt (simulación)',
+      procedure: `Aceleración promedio calculada como Δv / Δt usando el inicio y el final de la serie de tiempo.
 
-a = ${fuerzaPromedio.toFixed(2)} / ${mass}
-a = ${aceleracionPromedio.toFixed(2)} m/s²`
+    Δv = v_final - v_inicial = ${velocidadFinal.toFixed(2)} - ${(allData[0]?.velocity ?? 0).toFixed(2)} = ${(velocidadFinal - (allData[0]?.velocity ?? 0)).toFixed(2)} m/s
+    Tiempo = ${currentData.time.toFixed(2)} s
+    a_avg = ${aceleracionPromedio.toFixed(4)} m/s²
+
+    Relación con la fuerza neta: F_prom = ${fuerzaPromedio.toFixed(2)} N → a ≈ F_prom / m = ${(fuerzaPromedio / mass).toFixed(4)} m/s² (aprox.)`
     },
     {
       id: 'displacement',
       label: 'Desplazamiento',
       value: desplazamiento.toFixed(2),
       unit: 'm',
-      formula: 'd = x_final - x_inicial',
-      procedure: `Posición inicial (x₀) = 0 m
-Posición final (x) = ${posicionFinal.toFixed(2)} m
-
-d = ${posicionFinal.toFixed(2)} - 0
-d = ${desplazamiento.toFixed(2)} m`
+      formula: 'd = x_final - x_inicial (simulada)',
+      procedure: `Desplazamiento total registrado por la simulación = ${desplazamiento.toFixed(2)} m` 
     },
     {
       id: 'maxVelocity',
@@ -94,26 +101,23 @@ d = ${desplazamiento.toFixed(2)} m`
       value: velocidadMaxima.toFixed(2),
       unit: 'm/s',
       formula: 'v_max = max(v(t))',
-      procedure: `Durante toda la simulación, se registró la velocidad en cada instante.
+      procedure: `Durante la simulación se registró la velocidad en cada paso.
 
-Velocidad máxima alcanzada:
-v_max = ${velocidadMaxima.toFixed(2)} m/s
-
-Esto ocurrió en t ≈ ${allData.find(d => Math.abs(d.velocity - velocidadMaxima) < 0.01)?.time.toFixed(2) || currentData.time.toFixed(2)} s`
+    Velocidad máxima alcanzada: ${velocidadMaxima.toFixed(2)} m/s
+    Ocurrió alrededor de t ≈ ${allData.find(d => Math.abs(d.velocity - velocidadMaxima) < 0.01)?.time.toFixed(2) || currentData.time.toFixed(2)} s` 
     },
     {
       id: 'avgForce',
-      label: 'Fuerza Promedio',
+      label: 'Fuerza Promedio (neto)',
       value: fuerzaPromedio.toFixed(2),
       unit: 'N',
-      formula: 'F_prom = ΣF / n',
-      procedure: `Se calculó el promedio de todas las fuerzas netas aplicadas durante el movimiento.
+      formula: 'F_prom = ΣF_net / n (muestras)',
+      procedure: `Se tomó el promedio aritmético de las fuerzas netas muestreadas durante la simulación.
 
-Número de mediciones (n) = ${allData.length}
-Suma de fuerzas (ΣF) = ${(fuerzaPromedio * allData.length).toFixed(2)} N
+    Número de mediciones (n) = ${allData.length}
+    F_prom = ${(fuerzaPromedio * allData.length).toFixed(2)} / ${allData.length} = ${fuerzaPromedio.toFixed(2)} N
 
-F_prom = ${(fuerzaPromedio * allData.length).toFixed(2)} / ${allData.length}
-F_prom = ${fuerzaPromedio.toFixed(2)} N`
+    Nota: el trabajo total se calcula como la suma numérica de F_net·Δx por paso, no como F_final·d.`
     }
   ];
 
@@ -188,7 +192,7 @@ F_prom = ${fuerzaPromedio.toFixed(2)} N`
               {currentData.work.toFixed(2)} <span className="text-sm text-gray-400">J</span>
             </div>
             <div className="text-xs text-purple-300 mt-1">
-              W = F·d = ({currentData.force.toFixed(2)})({posicionFinal.toFixed(2)})
+              W (simulado) = Σ (F_neta_i · Δx_i) = {currentData.work.toFixed(2)} J
             </div>
           </div>
         </div>

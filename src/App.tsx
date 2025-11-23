@@ -64,6 +64,12 @@ export default function App() {
 
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
+  // Worker + buffers for high-performance simulation
+  const workerRef = useRef<Worker | null>(null);
+  const workerReadyRef = useRef(false);
+  const bufferPoolRef = useRef<ArrayBuffer[]>([]);
+  const lastFlushRef = useRef<number>(0);
+  const FLUSH_INTERVAL = 100; // ms between React state updates from worker ticks
   // Responsive helper to force two-column layout client-side when width >= 600px
   const [isWide, setIsWide] = useState<boolean>(false);
   useEffect(() => {
@@ -85,39 +91,75 @@ export default function App() {
   const v2PositionRef = useRef<number>(0);
   const v2WorkRef = useRef<number>(0);
   const v2MaxVelocityRef = useRef<number>(0);
+  const lastWorkerTickRef = useRef<number>(performance.now());
+  const [workerHealthy, setWorkerHealthy] = useState<boolean>(true);
 
   useEffect(() => {
     if (isRunning) {
       startTimeRef.current = Date.now();
-      
-  v1VelocityRef.current = vehicle1InitialVelocity;
-  v1PositionRef.current = vehicle1InitialPosition;
+
+      v1VelocityRef.current = vehicle1InitialVelocity;
+      v1PositionRef.current = vehicle1InitialPosition;
       v1WorkRef.current = 0;
       v1MaxVelocityRef.current = 0;
-      
-  v2VelocityRef.current = vehicle2InitialVelocity;
-  v2PositionRef.current = vehicle2InitialPosition;
+
+      v2VelocityRef.current = vehicle2InitialVelocity;
+      v2PositionRef.current = vehicle2InitialPosition;
       v2WorkRef.current = 0;
       v2MaxVelocityRef.current = 0;
-      
+
       setVehicle1Data([]);
       setVehicle2Data([]);
       setWinner(null);
-      
-      animate();
+
+      // If worker is available and ready, let it run the sim; otherwise fall back to animate()
+      if (workerRef.current && workerReadyRef.current) {
+        try {
+          workerRef.current.postMessage({ type: 'setParams', params: {
+            vehicle1: { mass: vehicle1Mass, friction: vehicle1Friction, force: vehicle1Force, forceType: vehicle1ForceType, initialPosition: vehicle1InitialPosition, initialVelocity: vehicle1InitialVelocity },
+            vehicle2: { mass: vehicle2Mass, friction: vehicle2Friction, force: vehicle2Force, forceType: vehicle2ForceType, initialPosition: vehicle2InitialPosition, initialVelocity: vehicle2InitialVelocity },
+            raceDistance: raceDistance ?? 0,
+            raceTime: raceTime ?? Infinity
+          } });
+          workerRef.current.postMessage({ type: 'start' });
+        } catch (e) {
+          // fallback
+          animate();
+        }
+      } else {
+        animate();
+      }
     } else {
+      if (workerRef.current) {
+        workerRef.current.postMessage({ type: 'pause' });
+      }
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     }
 
     return () => {
+      if (workerRef.current) workerRef.current.postMessage({ type: 'pause' });
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
   }, [isRunning, vehicle1Mass, vehicle1Force, vehicle1Friction, vehicle1ForceType,
       vehicle2Mass, vehicle2Force, vehicle2Friction, vehicle2ForceType]);
+
+  // Update worker with new params when they change
+  useEffect(() => {
+    if (workerRef.current && workerReadyRef.current) {
+      try {
+        workerRef.current.postMessage({ type: 'setParams', params: {
+          vehicle1: { mass: vehicle1Mass, friction: vehicle1Friction, force: vehicle1Force, forceType: vehicle1ForceType, initialPosition: vehicle1InitialPosition, initialVelocity: vehicle1InitialVelocity },
+          vehicle2: { mass: vehicle2Mass, friction: vehicle2Friction, force: vehicle2Force, forceType: vehicle2ForceType, initialPosition: vehicle2InitialPosition, initialVelocity: vehicle2InitialVelocity },
+          raceDistance: raceDistance ?? 0,
+          raceTime: raceTime ?? Infinity
+        } });
+      } catch (e) { /* ignore */ }
+    }
+  }, [vehicle1Mass, vehicle1Force, vehicle1Friction, vehicle1ForceType, vehicle1InitialPosition, vehicle1InitialVelocity, vehicle2Mass, vehicle2Force, vehicle2Friction, vehicle2ForceType, vehicle2InitialPosition, vehicle2InitialVelocity, raceDistance, raceTime]);
 
   const calculateForce = (baseForce: number, forceType: ForceType, time: number) => {
     switch (forceType) {
@@ -275,7 +317,146 @@ export default function App() {
     v2WorkRef.current = 0;
     v2MaxVelocityRef.current = 0;
     setWinner(null);
+    if (workerRef.current) {
+      try { workerRef.current.postMessage({ type: 'reset' }); } catch (e) { /* ignore */ }
+    }
   };
+
+  // Initialize worker on mount
+  useEffect(() => {
+    if (typeof Worker === 'undefined') return;
+    const w = new Worker(new URL('./worker/simWorker.ts', import.meta.url), { type: 'module' });
+    workerRef.current = w;
+
+    w.onmessage = (e: MessageEvent) => {
+      const msg = e.data;
+      if (!msg || typeof msg.type !== 'string') return;
+      if (msg.type === 'ready') {
+        workerReadyRef.current = true;
+        return;
+      }
+      if (msg.type === 'tick' && msg.buf) {
+        const arr = new Float64Array(msg.buf);
+        // layout: [t, v1Pos, v1Vel, v1Acc, v1NetForce, v1KE, v1Work, v2Pos, v2Vel, v2Acc, v2NetForce, v2KE, v2Work]
+        v1PositionRef.current = arr[1];
+        v1VelocityRef.current = arr[2];
+        v2PositionRef.current = arr[7];
+        v2VelocityRef.current = arr[8];
+        v1WorkRef.current = arr[6] ?? v1WorkRef.current;
+        v2WorkRef.current = arr[12] ?? v2WorkRef.current;
+  // mark last tick time
+  lastWorkerTickRef.current = performance.now();
+  if (!workerHealthy) setWorkerHealthy(true);
+
+        // Throttle React state updates to avoid 60Hz setState
+        const now = performance.now();
+        if (now - lastFlushRef.current >= FLUSH_INTERVAL) {
+          lastFlushRef.current = now;
+          const newV1: VehicleData = {
+            time: now / 1000,
+            position: v1PositionRef.current,
+            velocity: v1VelocityRef.current,
+            acceleration: arr[3] ?? 0,
+            kineticEnergy: arr[5] ?? 0,
+            work: v1WorkRef.current,
+            force: arr[4] ?? 0,
+            maxVelocity: Math.max(v1MaxVelocityRef.current, v1VelocityRef.current)
+          };
+          const newV2: VehicleData = {
+            time: now / 1000,
+            position: v2PositionRef.current,
+            velocity: v2VelocityRef.current,
+            acceleration: arr[9] ?? 0,
+            kineticEnergy: arr[11] ?? 0,
+            work: v2WorkRef.current,
+            force: arr[10] ?? 0,
+            maxVelocity: Math.max(v2MaxVelocityRef.current, v2VelocityRef.current)
+          };
+          setVehicle1Current(newV1);
+          setVehicle1Data(prev => [...prev, newV1].slice(-100));
+          setVehicle2Current(newV2);
+          setVehicle2Data(prev => [...prev, newV2].slice(-100));
+          if (newV1.velocity > v1MaxVelocityRef.current) v1MaxVelocityRef.current = newV1.velocity;
+          if (newV2.velocity > v2MaxVelocityRef.current) v2MaxVelocityRef.current = newV2.velocity;
+        }
+
+        // return buffer to worker for reuse
+        try { w.postMessage({ type: 'returnBuffer', buf: msg.buf }, [msg.buf]); } catch (err) { /* ignore */ }
+      }
+
+      if (msg.type === 'finished') {
+        setWinner(msg.winner);
+        setIsRunning(false);
+        // final state snapshot if provided
+        if (msg.final && msg.final.v1 && msg.final.v2) {
+          const now = performance.now();
+          const f1: VehicleData = {
+            time: now / 1000,
+            position: msg.final.v1.position,
+            velocity: msg.final.v1.velocity,
+            acceleration: msg.final.v1.acceleration ?? 0,
+            kineticEnergy: 0.5 * msg.final.v1.mass * Math.pow(msg.final.v1.velocity, 2),
+            work: msg.final.v1.work ?? 0,
+            force: (msg.final.v1.netForce ?? 0),
+            maxVelocity: v1MaxVelocityRef.current
+          };
+          const f2: VehicleData = {
+            time: now / 1000,
+            position: msg.final.v2.position,
+            velocity: msg.final.v2.velocity,
+            acceleration: msg.final.v2.acceleration ?? 0,
+            kineticEnergy: 0.5 * msg.final.v2.mass * Math.pow(msg.final.v2.velocity, 2),
+            work: msg.final.v2.work ?? 0,
+            force: (msg.final.v2.netForce ?? 0),
+            maxVelocity: v2MaxVelocityRef.current
+          };
+          setVehicle1Current(f1);
+          setVehicle2Current(f2);
+          setVehicle1Data(prev => [...prev, f1].slice(-100));
+          setVehicle2Data(prev => [...prev, f2].slice(-100));
+        }
+      }
+      if (msg.type === 'finished') {
+        // handled earlier in flush logic; also mark healthy
+        lastWorkerTickRef.current = performance.now();
+        if (!workerHealthy) setWorkerHealthy(true);
+      }
+    };
+
+    // create two small buffers and send them to the worker so it can reuse them
+    const len = Float64Array.BYTES_PER_ELEMENT * 13;
+    const b0 = new ArrayBuffer(len);
+    const b1 = new ArrayBuffer(len);
+    // send initial config
+    w.postMessage({ type: 'init', config: { vehicle1: { mass: vehicle1Mass, friction: vehicle1Friction, force: vehicle1Force, forceType: vehicle1ForceType, initialPosition: vehicle1InitialPosition, initialVelocity: vehicle1InitialVelocity }, vehicle2: { mass: vehicle2Mass, friction: vehicle2Friction, force: vehicle2Force, forceType: vehicle2ForceType, initialPosition: vehicle2InitialPosition, initialVelocity: vehicle2InitialVelocity }, raceDistance: raceDistance ?? 0, raceTime: raceTime ?? Infinity } });
+    // immediately transfer buffers for reuse
+    try { w.postMessage({ type: 'returnBuffer', buf: b0 }, [b0]); w.postMessage({ type: 'returnBuffer', buf: b1 }, [b1]); } catch (e) { /* ignore */ }
+
+    return () => {
+      try { w.terminate(); } catch (e) {}
+      workerRef.current = null;
+      workerReadyRef.current = false;
+    };
+  }, []);
+
+  // Watchdog: if worker stops sending ticks, mark unhealthy and fallback to animate()
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = performance.now();
+      const last = lastWorkerTickRef.current || 0;
+      if (workerRef.current && workerReadyRef.current && isRunning) {
+        if (now - last > 600) {
+          // worker likely stalled
+          if (workerHealthy) setWorkerHealthy(false);
+          // fallback to main-thread animate loop
+          try { animate(); } catch (e) { /* ignore */ }
+        } else {
+          if (!workerHealthy) setWorkerHealthy(true);
+        }
+      }
+    }, 300);
+    return () => clearInterval(interval);
+  }, [isRunning, workerHealthy]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-slate-900 to-black overflow-x-hidden">
@@ -519,6 +700,8 @@ export default function App() {
           raceTime={raceTime ?? 0}
           vehicle1Image={vehicle1ImageUrl}
           vehicle2Image={vehicle2ImageUrl}
+          vehicle1PositionRef={v1PositionRef}
+          vehicle2PositionRef={v2PositionRef}
         />
 
     {/* Vehicle Controls - Side by Side */}
