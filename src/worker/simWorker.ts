@@ -160,13 +160,21 @@ function startLoop() {
 
     // check finish conditions
     if (raceDistance !== undefined && raceDistance !== null) {
-      if (vehicle1.position >= raceDistance) {
+      const v1Done = vehicle1.position >= raceDistance;
+      const v2Done = vehicle2.position >= raceDistance;
+      if (v1Done && v2Done) {
+        running = false;
+        // tie
+        self.postMessage({ type: 'finished', winner: 'tie', final: { v1: vehicle1, v2: vehicle2 } });
+        return;
+      }
+      if (v1Done) {
         running = false;
         // send finished message
         self.postMessage({ type: 'finished', winner: 1, final: { v1: vehicle1, v2: vehicle2 } });
         return;
       }
-      if (vehicle2.position >= raceDistance) {
+      if (v2Done) {
         running = false;
         self.postMessage({ type: 'finished', winner: 2, final: { v1: vehicle1, v2: vehicle2 } });
         return;

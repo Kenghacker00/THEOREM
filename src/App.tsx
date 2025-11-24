@@ -53,7 +53,7 @@ export default function App() {
 
   const [scenario, setScenario] = useState<ScenarioType>('stadium');
   const [isRunning, setIsRunning] = useState(false);
-  const [winner, setWinner] = useState<number | null>(null);
+  const [winner, setWinner] = useState<number | 'tie' | null>(null);
   const [raceDistance, setRaceDistance] = useState<number | null>(null); // Parametrizable (optional)
   const [raceTime, setRaceTime] = useState<number | null>(null); // Nuevo: tiempo de simulación parametrizable (optional)
   const [raceDistanceCustom, setRaceDistanceCustom] = useState(false);
@@ -278,16 +278,25 @@ export default function App() {
     setVehicle2Current(newV2Data);
     setVehicle2Data(prev => [...prev, newV2Data].slice(-100));
 
-    // Check for winner
-    if (raceDistance !== null && v1PositionRef.current >= raceDistance && winner === null) {
-      setWinner(1);
-      setIsRunning(false);
-      return;
-    }
-    if (raceDistance !== null && v2PositionRef.current >= raceDistance && winner === null) {
-      setWinner(2);
-      setIsRunning(false);
-      return;
+    // Check for winner (handle tie when both reach in same frame)
+    if (raceDistance !== null && winner === null) {
+      const v1Done = v1PositionRef.current >= raceDistance;
+      const v2Done = v2PositionRef.current >= raceDistance;
+      if (v1Done && v2Done) {
+        setWinner('tie');
+        setIsRunning(false);
+        return;
+      }
+      if (v1Done) {
+        setWinner(1);
+        setIsRunning(false);
+        return;
+      }
+      if (v2Done) {
+        setWinner(2);
+        setIsRunning(false);
+        return;
+      }
     }
     if (raceTime !== null && currentTime < raceTime && isRunning) {
       animationRef.current = requestAnimationFrame(animate);
@@ -669,14 +678,14 @@ export default function App() {
 
         {/* Race Scene - FULL WIDTH */}
         {/* Winner Banner (now placed above the RaceScene so it doesn't occupy the top of the full template) */}
-        {winner && (
+        {winner !== null && (
           <div className="max-w-full mx-auto px-0">
             <div className="bg-gradient-to-r from-yellow-500 via-orange-500 to-yellow-500 rounded-xl p-4 shadow-2xl border-4 border-yellow-300">
               <div className="flex items-center justify-center gap-4">
                 <Trophy className="text-white" size={36} />
                 <div className="text-center">
                   <div className="text-white text-2xl font-semibold">
-                    🏆 ¡VEHÍCULO {winner} GANÓ LA CARRERA! 🏆
+                    {winner === 'tie' ? '🤝 ¡EMPATE! Ambos vehículos llegaron al final' : `🏆 ¡VEHÍCULO ${winner} GANÓ LA CARRERA! 🏆`}
                   </div>
                   <div className="text-yellow-100 text-sm mt-1">
                     Distancia completada: {raceDistance}m
